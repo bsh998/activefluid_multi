@@ -80,7 +80,9 @@ int main(int argc, char *argv[])
         start = time(NULL);
         std::ofstream out;
         out.open("test.csv");
-        for(double t=0.0; t<=tmax; t +=dt) {
+        int iter = (int)tmax/dt;
+        int recordn = (int)record/dt;
+        for(int t=0; t<=iter; t ++) {
             // position and angle update
              // linked list
             linked_list(devPtls, Lsize, N_ptcl,N_active, cllsNum, devCell, devHead, devTail,nBlocks, nThreads);
@@ -88,7 +90,7 @@ int main(int argc, char *argv[])
             torque_object<<<nBlocks,nThreads>>>(devtorque, paTorque, paAngle,N_passive,N_body,mu_R_A,mu_R_C);
             particles_move<<<nBlocks, nThreads>>>(devPtls,devStates,paAngle,pax,pay,Lsize,U0,dt,alpha,
                 N_ptcl,N_passive,N_active,N_body,mu_active,mu_R_A,mu_R_C);
-            if((int)t%record==0)
+            if((t%recordn)==0)
             {
                 cudaMemcpy(AngleHost,paAngle,sizeof(double)*N_passive*N_passive,cudaMemcpyDeviceToHost);
                 for(int i = 0; i<(int)N_passive*N_passive/2;i++)
