@@ -90,7 +90,7 @@ int main(int argc, char *argv[])
                 N_ptcl,N_passive,N_active,N_body,mu_active,mu_R_A,mu_R_C);
             if((int)t%record==0)
             {
-                cudaMemcpy(paAngle,AngleHost,sizeof(double)*N_passive*N_passive,cudaMemcpyDeviceToHost);
+                cudaMemcpy(AngleHost,paAngle,sizeof(double)*N_passive*N_passive,cudaMemcpyDeviceToHost);
                 for(int i = 0; i<(int)N_passive*N_passive/2;i++)
                 {
                     out<<AngleHost[i]<<',';
@@ -103,6 +103,8 @@ int main(int argc, char *argv[])
         std::cout<<(end-start)<<'\n';
     //}
 
-    cudaFree(devPtls) ; cudaFree(devStates); 
+    cudaFree(devPtls) ; cudaFree(devStates);  
     cudaFree(devCell) ; cudaFree(devHead) ; cudaFree(devTail) ; 
+    cudaFree(paAngle); cudaFree(pax);cudaFree(pay);cudaFree(paTorque);
+    free(AngleHost);
 }
