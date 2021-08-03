@@ -1,12 +1,15 @@
 #define interactionRange2 (1.0) 
 #define MaxThreads (256)
 
-#include "activefluid_multi.c"
-#include "stdlib.h"
+#include <fstream>
+#include <sstream>
 #include <time.h>
 #include <random>
-#include <fstream>
 #include <iostream>
+#include "activefluid_multi.c"
+#include "stdlib.h"
+
+
 int main(int argc, char *argv[])
 {
     if(argc!=10) error_output("command L tmax delt") ;
@@ -79,7 +82,11 @@ int main(int argc, char *argv[])
         //init_passive_particle<<<nBlocks,nThreads>>>(devPtls, paAngle, pax, pay, Lsize, N_passive, N_active,N_body,dist) ;
         start = time(NULL);
         std::ofstream out;
-        out.open("test.csv");
+        std::stringstream fileNameStream;
+        fileNameStream <<"mu_R_A_"<< argv[8]<<"_mu_R_C_"<<argv[9]<<"_Passive_"<<N_passive<<".csv";
+        out.open(fileNameStream.str());
+        std::cout<<fileNameStream.str();
+            //fileNameStream.str());
         int iter = (int)tmax/dt;
         int recordn = (int)record/dt;
         for(int t=0; t<=iter; t ++) {
@@ -90,6 +97,7 @@ int main(int argc, char *argv[])
             torque_object<<<nBlocks,nThreads>>>(devtorque, paTorque, paAngle,N_passive,N_body,mu_R_A,mu_R_C);
             particles_move<<<nBlocks, nThreads>>>(devPtls,devStates,paAngle,pax,pay,Lsize,U0,dt,alpha,
                 N_ptcl,N_passive,N_active,N_body,mu_active,mu_R_A,mu_R_C);
+            
             if((t%recordn)==0)
             {
                 cudaMemcpy(AngleHost,paAngle,sizeof(double)*N_passive*N_passive,cudaMemcpyDeviceToHost);

@@ -25,7 +25,7 @@ struct object{
     double Fy;
     double torque;
 };
-extern "C" {
+
 __device__ double exponential_runtime(curandState *state, double tauR) {
   double U = curand_uniform_double(state);
   return -log(U)*tauR;
@@ -35,7 +35,7 @@ __device__ double uniform_runtime(curandState *state, double a, double b)
     double U = curand_uniform_double(state);
     return b+U*(a-b);
 }
-} //extern C
+ //extern C
 __global__ void initrand(curandState *state, const int N_ptcl) {
   int seed = 0;
   int offset = 0;
@@ -300,7 +300,7 @@ __global__ void force(
         //ptls[tid].Fy_C = dx*ptls[tid].Fy_A-dy*ptls[tid].Fx_A;
         torque[tid-N_active]=dx*Fy-dy*Fx;
     }
-    else if(tid<N_active+2*N_body)
+    else if(tid<N_ptcl)
     {
         int objnum = (int)((tid-N_active)/N_body);
         double x = ptls[tid].x, y = ptls[tid].y;
