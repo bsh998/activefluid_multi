@@ -393,7 +393,7 @@ const int N_passive, const int N_body, const double mu_R_A,const double mu_R_C)
         double tempAngle=paAngle[tid];
         for(int i = 0; i<N_body;i++)
         {
-            temptorque += paAngle[tid*N_body+i];
+            temptorque += torque[tid*N_body+i];
         }
         temptorque *= mu_R_A;
         tempAngle += temptorque;
@@ -407,8 +407,9 @@ const int N_passive, const int N_body, const double mu_R_A,const double mu_R_C)
         double tempAngle=paAngle[tid];
         for(int i = 0; i<N_body;i++)
         {
-            temptorque += paAngle[tid*N_body+i];
+            temptorque += torque[tid*N_body+i];
         }
+        //printf("torque: %f\n",temptorque);
         temptorque *= mu_R_A;
         tempAngle += temptorque;
         if(tempAngle>two_ppi)tempAngle -=two_ppi;
