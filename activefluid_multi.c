@@ -195,10 +195,11 @@ __global__ void particles_move(
         }
         tempx += mu_active*(ptls[tid].Fx)*dt;
         tempy += mu_active*(ptls[tid].Fy)*dt;
-        if(tempx>(float)lsize/2.)  tempx -= (float)lsize;
-        if(tempx<-(float)lsize/2.) tempx += (float)lsize;
-        if(tempy>(float)lsize/2.)  tempy -= (float)lsize;
-        if(tempy<-(float)lsize/2.) tempy += (float)lsize;
+        int offset = lsize/2;
+        if(tempx>(float)offset)  tempx -= (float)lsize;
+        if(tempx<-(float)offset) tempx += (float)lsize;
+        if(tempy>(float)offset)  tempy -= (float)lsize;
+        if(tempy<-(float)offset) tempy += (float)lsize;
         ptls[tid].x = tempx;
         ptls[tid].y = tempy;
         
@@ -213,10 +214,11 @@ __global__ void particles_move(
         float dx = tempx-ptls[centernum].x;
         tempx  += -dy*dtheta;
         tempy  += dx*dtheta;
-        if(tempx>(float)lsize/2.)  tempx -= (float)lsize;
-        if(tempx<-(float)lsize/2.) tempx += (float)lsize;
-        if(tempy>(float)lsize/2.)  tempy -= (float)lsize;
-        if(tempy<-(float)lsize/2.) tempy += (float)lsize;
+        int offset = lsize/2;
+        if(tempx>(float)offset)  tempx -= (float)lsize;
+        if(tempx<-(float)offset) tempx += (float)lsize;
+        if(tempy>(float)offset)  tempy -= (float)lsize;
+        if(tempy<-(float)offset) tempy += (float)lsize;
         ptls[tid].x = tempx;
         ptls[tid].y = tempy;
     }
@@ -229,10 +231,11 @@ __global__ void particles_move(
         float dx = tempx-pax[objnum];
         tempx  += -dy*dtheta;
         tempy  += dx*dtheta;
-        if(tempx>(float)lsize/2.)  tempx -= (float)lsize;
-        if(tempx<-(float)lsize/2.) tempx += (float)lsize;
-        if(tempy>(float)lsize/2.)  tempy -= (float)lsize;
-        if(tempy<-(float)lsize/2.) tempy += (float)lsize;
+        int offset = lsize/2;
+        if(tempx>(float)offset)  tempx -= (float)lsize;
+        if(tempx<-(float)offset) tempx += (float)lsize;
+        if(tempy>(float)offset)  tempy -= (float)lsize;
+        if(tempy<-(float)offset) tempy += (float)lsize;
         ptls[tid].x = tempx;
         ptls[tid].y = tempy;
     }
@@ -259,23 +262,28 @@ __global__ void force(
     if(tid < N_active) 
     {
         float x = ptls[tid].x, y = ptls[tid].y;
+        float force;
+        int offset = lsize/2;
         for(int i = N_active; i<N_ptcl; i++)
         {
             dx = x-ptls[i].x;
             dy = y-ptls[i].y;
-            if      (dx > (float)lsize-1.0)  {dx =lsize-dx;}
-            else if (dx < 1.0-(float)lsize)  {dx =-lsize-dx;}
-            if      (dy > (float)lsize-1.0)  {dy =lsize-dy;}
-            else if (dy < 1.0-(float)lsize)  {dy =-lsize-dy;}
-            dl = dx*dx+dy+dy;
+            if      (dx > (float)offset)  {dx -= lsize;}
+            else if (dx < -(float)offset) {dx += lsize;}
+            if      (dy > (float)offset)  {dy -= lsize;}
+            else if (dy < -(float)offset) {dy += lsize;}
+            dl = dx*dx+dy*dy;
             if(dl<=1.0)
             {
-                Fx += lamb*dx;
-                Fy += lamb*dy;
+                dl = rsqrtf(dl);
+                force = lamb*(1-dl);
+                Fx += force*fdividef(dx,dl);
+                Fy += force*fdividef(dy,dl);
             }
         }
         ptls[tid].Fx=Fx;
         ptls[tid].Fy=Fy;
+
     }
     else if(tid<N_active+(int)(N_passive*N_passive*N_body/2))
     {
@@ -285,6 +293,7 @@ __global__ void force(
         int cellx = (int)floor(x);
         int celly = (int)floor(y);
         int offset = (int)(lsize/2);
+        float force;
         for(int a=cellx-1; a<=cellx+1; a++) {
             for(int b=celly-1; b<=celly+1; b++) {
                 // zz : index for neighboring cells
@@ -292,14 +301,17 @@ __global__ void force(
                 for(int k=cellHead[zz]; k<=cellTail[zz]; k++) {
                     // loop over particles in the cell zz
                     dx = (x-ptls[k].x) ;
-                    if      (dx > (float)lsize-1.0)  {dx =lsize-dx;}
-                    else if (dx < 1.0-(float)lsize)  {dx =-lsize-dx;}
+                    if     (dx>(float)offset)  dx -= lsize;
+                    else if(dx<-(float)offset) dx += lsize;
                     dy = (y-ptls[k].y) ;
-                    if      (dy > (float)lsize-1.0)  {dy =lsize-dy;}
-                    else if (dy < 1.0-(float)lsize)  {dy =-lsize-dy;}
-                    if(dx*dx+dy*dy <= 1.0) {
-                        Fx += lamb*dx;
-                        Fy += lamb*dy;
+                    if     (dy>(float)offset)  dy -= lsize;
+                    else if(dy<-(float)offset) dy += lsize;
+                    dl = dx*dx+dy*dy;
+                    if(dl <= 1.0) {
+                        dl = rsqrtf(dl);
+                        force = lamb*(1-dl);
+                        Fx += force*fdividef(dx,dl);
+                        Fy += force*fdividef(dy,dl);
                     }
                 }
             }
@@ -316,6 +328,7 @@ __global__ void force(
         int cellx = (int)floor(x);
         int celly = (int)floor(y);
         int offset = (int)(lsize/2);
+        float force;
         for(int a=cellx-1; a<=cellx+1; a++) {
             for(int b=celly-1; b<=celly+1; b++) {
                 // zz : index for neighboring cells
@@ -323,14 +336,17 @@ __global__ void force(
                 for(int k=cellHead[zz]; k<=cellTail[zz]; k++) {
                     // loop over particles in the cell zz
                     dx = (x-ptls[k].x) ;
-                    if      (dx > (float)lsize-1.0)  {dx =lsize-dx;}
-                    if      (dx < 1.0-(float)lsize)  {dx =-lsize-dx;}
+                    if     (dx>(float)offset)  dx -= lsize;
+                    else if(dx<-(float)offset) dx += lsize;
                     dy = (y-ptls[k].y) ;
-                    if      (dy > (float)lsize-1.0)  {dy =lsize-dy;}
-                    if      (dy < 1.0-(float)lsize)  {dy =-lsize-dy;}
-                    if(dx*dx+dy*dy <= 1.0) {
-                        Fx += lamb*dx;
-                        Fy += lamb*dy;
+                    if     (dy>(float)offset)  dy -= lsize;
+                    else if(dy<-(float)offset) dy += lsize;
+                    dl = dx*dx+dy*dy;
+                    if(dl <= 1.0) {
+                        dl = rsqrtf(dl);
+                        force = lamb*(1-dl);
+                        Fx += force*fdividef(dx,dl);
+                        Fy += force*fdividef(dy,dl);
                     }
                 }
             }
@@ -348,8 +364,9 @@ __global__ void find_address(struct particle *ptls,
 {
     const int tid = threadIdx.x + blockDim.x * blockIdx.x ;
     if(tid<ptlsNum) {
-         cell[tid] = ((int)(ptls[tid].x+lsize/2.0))%lsize 
-                    + lsize*(((int)(ptls[tid].y+lsize/2.0))%lsize) ;
+        int offset = lsize/2;
+        cell[tid] = ((int)(ptls[tid].x+offset))%lsize 
+                    + lsize*(((int)(ptls[tid].y+offset))%lsize) ;
     }
 }
 
@@ -399,7 +416,7 @@ void linked_list(struct particle *ptls, const int lsize,
 
 }
 __global__ void torque_object(float *torque, float *patorque,float *paAngle, 
-const int N_passive, const int N_body, const float mu_R_A,const float mu_R_C)
+const int N_passive, const int N_body, const float mu_R_A,const float mu_R_C,const float dt)
 {
     const int tid = threadIdx.x + blockDim.x * blockIdx.x ;
     if(tid<(int)(N_passive*N_passive/2))
@@ -412,7 +429,7 @@ const int N_passive, const int N_body, const float mu_R_A,const float mu_R_C)
         }
         //printf("tid : %d \t torque : %f\n",tid,tempTorque);
         tempTorque *= mu_R_A;
-        tempAngle += tempTorque;
+        tempAngle += tempTorque*dt;
         if(tempAngle>two_ppi)tempAngle -=two_ppi;
         if(tempAngle<0)tempAngle       += two_ppi;
         paAngle[tid]  = tempAngle;
@@ -428,7 +445,7 @@ const int N_passive, const int N_body, const float mu_R_A,const float mu_R_C)
         //printf("tid : %d \t torque : %f\n",tid,tempTorque);
         //printf("torque: %f\n",temptorque);
         tempTorque *= mu_R_C;
-        tempAngle += tempTorque;
+        tempAngle += tempTorque*dt;
         if(tempAngle>two_ppi)tempAngle -=two_ppi;
         if(tempAngle<0)tempAngle += two_ppi;
         paAngle[tid]  = tempAngle;

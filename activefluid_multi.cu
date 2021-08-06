@@ -94,7 +94,7 @@ int main(int argc, char *argv[])
              // linked list
             linked_list(devPtls, Lsize, N_ptcl,N_active, cllsNum, devCell, devHead, devTail,nBlocks, nThreads);
             force<<<nBlocks,nThreads>>>(devPtls,devHead,devTail,devtorque,pax,pay,Lsize,lamb,N_ptcl,N_passive,N_active,N_body);
-            torque_object<<<nBlocks,nThreads>>>(devtorque, paTorque, paAngle,N_passive,N_body,mu_R_A,mu_R_C);
+            torque_object<<<nBlocks,nThreads>>>(devtorque, paTorque, paAngle,N_passive,N_body,mu_R_A,mu_R_C,dt);
             particles_move<<<nBlocks, nThreads>>>(devPtls,devStates,paTorque,pax,pay,Lsize,U0,dt,alpha,
                 N_ptcl,N_passive,N_active,N_body,mu_active,mu_R_A,mu_R_C);
             
