@@ -44,11 +44,11 @@ int main(int argc, char *argv[])
     std::cout<<N_ptcl<<'\n';
     float *paAngle, *paTorque, *pax, *pay;
     float *AngleHost;
-    cudaMalloc(&paAngle, sizeof(float)*N_passive*N_passive);
-    cudaMalloc(&paTorque, sizeof(float)*N_passive*N_passive);
-    cudaMalloc(&pax, sizeof(float)*N_passive*N_passive);
-    cudaMalloc(&pay, sizeof(float)*N_passive*N_passive);
-    AngleHost = (float *)malloc(sizeof(float)*N_passive*N_passive);
+    cudaMalloc(&paAngle, sizeof(float)*(N_passive*N_passive));
+    cudaMalloc(&paTorque, sizeof(float)*(N_passive*N_passive));
+    cudaMalloc(&pax, sizeof(float)*(N_passive*N_passive));
+    cudaMalloc(&pay, sizeof(float)*(N_passive*N_passive));
+    AngleHost = (float *)malloc(sizeof(float)*(N_passive*N_passive));
     // VicsekParticle in the device
     struct particle *devPtls;
     cudaMalloc(&devPtls, sizeof(struct particle)*N_ptcl) ;
@@ -77,6 +77,7 @@ int main(int argc, char *argv[])
     cudaMalloc(&devStates, sizeof(curandState)*N_ptcl);
     initrand<<<nBlocks,nThreads>>>(devStates, N_ptcl) ;
         // random initial configuration
+        init_object<<<nBlocks,nThreads>>>(devStates,paAngle,pax,pay,N_passive,Lsize,dist);
         init_random_config<<<nBlocks,nThreads>>>(devPtls, devStates, paAngle, pax, pay, Lsize, N_ptcl,N_passive, N_active,N_body,alpha,dtheta) ;
         //init_passive_particle<<<nBlocks,nThreads>>>(devPtls, paAngle, pax, pay, Lsize, N_passive, N_active,N_body,dist) ;
         start = time(NULL);
@@ -94,7 +95,7 @@ int main(int argc, char *argv[])
             linked_list(devPtls, Lsize, N_ptcl,N_active, cllsNum, devCell, devHead, devTail,nBlocks, nThreads);
             force<<<nBlocks,nThreads>>>(devPtls,devHead,devTail,devtorque,pax,pay,Lsize,lamb,N_ptcl,N_passive,N_active,N_body);
             torque_object<<<nBlocks,nThreads>>>(devtorque, paTorque, paAngle,N_passive,N_body,mu_R_A,mu_R_C);
-            particles_move<<<nBlocks, nThreads>>>(devPtls,devStates,paAngle,pax,pay,Lsize,U0,dt,alpha,
+            particles_move<<<nBlocks, nThreads>>>(devPtls,devStates,paTorque,pax,pay,Lsize,U0,dt,alpha,
                 N_ptcl,N_passive,N_active,N_body,mu_active,mu_R_A,mu_R_C);
             
             if((t%recordn)==0)

@@ -27,17 +27,17 @@ struct object{
 };
 
 __device__ float exponential_runtime(curandState *state, float tauR) {
-  float U = curand_uniform_double(state);
+  float U = curand_uniform(state);
   return -log(U)*tauR;
 }
 __device__ float uniform_runtime(curandState *state, float a, float b)
 {
-    float U = curand_uniform_double(state);
+    float U = curand_uniform(state);
     return b+U*(a-b);
 }
  //extern C
 __global__ void initrand(curandState *state, const int N_ptcl) {
-  int seed = 0;
+  int seed = 42;
   int offset = 0;
   for (int tid = blockIdx.x * blockDim.x + threadIdx.x; tid < N_ptcl;
        tid += blockDim.x * gridDim.x) {
@@ -83,17 +83,23 @@ __global__ void init_object(
     const int tid = threadIdx.x + blockDim.x * blockIdx.x ;
     if(tid<(int)(N_passive*N_passive/2))
     {
-        float angle = two_ppi*curand_uniform(&state[tid]);
-        pax[tid] = (float)(tid%(int)(N_passive/2))*dist*2-(float)lsize/2.+dist/2.-cosf(paAngle[tid])+((int)tid/(int)(N_passive/2)&1)*dist;
-        pay[tid] = (float)((int)tid/(int)(N_passive/2))*dist-(float)lsize/2.+dist/2.-sinf(paAngle[tid]);
+        curandState localState = state[tid] ;
+        float angle = two_ppi*curand_uniform(&localState);
+        pax[tid] = (float)(tid%(int)(N_passive/2))*dist*2-(float)lsize/2.+dist/2.-cosf(angle)+((int)tid/(int)(N_passive/2)&1)*dist;
+        pay[tid] = (float)((int)tid/(int)(N_passive/2))*dist-(float)lsize/2.+dist/2.-sinf(angle);
         paAngle[tid] = angle;
+        printf("tid : %d\tx : %f\ty : %f\t angle : %f\n",tid,pax[tid],pay[tid],paAngle[tid]);
+        state[tid] = localState;
     }
     else if (tid<N_passive*N_passive)
     {
+        curandState localState = state[tid] ;
         float angle = two_ppi*curand_uniform(&state[tid]);
         pax[tid] = (float)(tid%(int)(N_passive/2))*dist*2-(float)lsize/2.+dist/2.+(((int)tid/(int)(N_passive/2)+1)&1)*dist;
-        pay[tid] = (float)((int)tid/(int)(N_passive/2))*dist-(float)lsize/2.+dist/2.;
+        pay[tid] = (float)((int)(tid-N_passive*N_passive/2)/(int)(N_passive/2))*dist-(float)lsize/2.+dist/2.;
         paAngle[tid] = angle;
+        printf("tid : %d\tx : %f\ty : %f\t angle : %f\n",tid,pax[tid],pay[tid],paAngle[tid]);
+        state[tid] = localState;
     }
 }
 __global__ void init_random_config(
@@ -114,10 +120,10 @@ __global__ void init_random_config(
     const int tid = threadIdx.x + blockDim.x * blockIdx.x ;
     if(tid<N_active){
         curandState localState = state[tid] ;
-        ptls[tid].x = uniform_runtime(&state[tid], -lsize/2., lsize/2.) ;
-        ptls[tid].y = uniform_runtime(&state[tid], -lsize/2., lsize/2.) ;
+        ptls[tid].x = uniform_runtime(&localState, -lsize/2., lsize/2.) ;
+        ptls[tid].y = uniform_runtime(&localState, -lsize/2., lsize/2.) ;
         ptls[tid].angle = two_ppi*curand_uniform(&localState) ;
-        ptls[tid].tauR = exponential_runtime(&state[tid],alpha);
+        ptls[tid].tauR = exponential_runtime(&localState,alpha);
         ptls[tid].tau = 0.0;
         state[tid] = localState ;
     }
@@ -140,7 +146,7 @@ __global__ void init_random_config(
 __global__ void particles_move(
     struct particle *ptls,
     curandState *state,
-    float *torque,
+    float *patorque,
     float *pax,
     float *pay,
     const int lsize,       
@@ -166,19 +172,22 @@ __global__ void particles_move(
         tempx = ptls[tid].x, tempy = ptls[tid].y;
         float tempAngle = ptls[tid].angle;
         if (ptls[tid].tau >= ptls[tid].tauR) {
+            curandState localstate = state[tid];
             float deltat = ptls[tid].tau-ptls[tid].tauR;
             tempx += U0*deltat *cosf(tempAngle);
             tempy += U0*deltat *sinf(tempAngle);
             // the orientation needs to change in a discrete fashion due to
             // tumbling. pick a new orientation uniformly between 0 and 2pi
-            tempAngle = curand_uniform_double(&state[tid]) * two_ppi;
+            tempAngle = curand_uniform(&localstate) * two_ppi;
             tempx += U0*(dt-deltat)*cosf(tempAngle);
             tempy += U0*(dt-deltat)*sinf(tempAngle);
             // reset time since last tumble to zero.
             ptls[tid].tau = (dt-deltat);
             // after tumbling, need to draw a new tumbling time.
-            ptls[tid].tauR = exponential_runtime(&state[tid], alpha);
+            ptls[tid].tauR = exponential_runtime(&localstate, alpha);
             ptls[tid].angle = tempAngle;
+            //printf("tid : %d\tx : %f\ty : %f\tangle : %f\n",tid,ptls[tid].tau,ptls[tid].tauR,ptls[tid].angle);
+            state[tid] =localstate;
         }
         else{
             tempx += U0*dt*cosf(tempAngle);
@@ -192,6 +201,7 @@ __global__ void particles_move(
         if(tempy<-(float)lsize/2.) tempy += (float)lsize;
         ptls[tid].x = tempx;
         ptls[tid].y = tempy;
+        
         //if(tid == 3)printf("4th particle x : %f\t y:%f \tFx:%f\tFy:%f\n",tempx,tempy,
         //ptls[tid].Fx,ptls[tid].Fy);
     }
@@ -199,7 +209,7 @@ __global__ void particles_move(
     {
         int objnum = (int)((tid-N_active)/N_body);
         int centernum = N_active+objnum*N_body+(int)((N_body-1)/2);
-        float dtheta = torque[objnum]*dt;
+        float dtheta = patorque[objnum]*dt;
         tempx = ptls[tid].x, tempy = ptls[tid].y;
         float dy = tempy-ptls[centernum].y;
         float dx = tempx-ptls[centernum].x;
@@ -211,11 +221,12 @@ __global__ void particles_move(
         if(tempy<-(float)lsize/2.) tempy += (float)lsize;
         ptls[tid].x = tempx;
         ptls[tid].y = tempy;
+        //printf("tid : %d\tx : %f\ty : %f\t\n",tid-N_active,ptls[tid].x,ptls[tid].y);
     }
-    else
+    else if(tid<N_ptcl)
     {
         int objnum = (int)((tid-N_active)/N_body);
-        float dtheta = torque[objnum]*dt;
+        float dtheta = patorque[objnum]*dt;
         tempx = ptls[tid].x, tempy = ptls[tid].y;
         float dy = tempy-pay[objnum];
         float dx = tempx-pax[objnum];
@@ -227,6 +238,7 @@ __global__ void particles_move(
         if(tempy<-(float)lsize/2.) tempy += (float)lsize;
         ptls[tid].x = tempx;
         ptls[tid].y = tempy;
+        //printf("tid : %d\tx : %f\ty : %f\t\n",tid-N_active,ptls[tid].x,ptls[tid].y);
     }
 // need to tumble 
 }
@@ -250,7 +262,6 @@ __global__ void force(
     float dx,dy,dl;
     if(tid < N_active) 
     {
-#pragma unroll 128
         for(int i = N_active; i<N_ptcl; i++)
         {
             dx = ptls[tid].x-ptls[i].x;
@@ -300,6 +311,7 @@ __global__ void force(
         //obj1.Fy += ptls[tid].Fy_A;
         //ptls[tid].Fy_C = dx*ptls[tid].Fy_A-dy*ptls[tid].Fx_A;
         torque[tid-N_active]=dx*Fy-dy*Fx;
+        //printf("tid : %d \tdx:%f\tdy:%f\tFy:%f\tFx:%f\n",tid,dx,dy,Fy,Fx);
     }
     else if(tid<N_ptcl)
     {
@@ -309,7 +321,6 @@ __global__ void force(
             for(int b=(int)y-1; b<=(int)y+1; b++) {
                 // zz : index for neighboring cells
                 int zz = (a+(int)(lsize/2.0))%lsize + ((b+(int)(lsize/2.0))%lsize)*lsize ;
-#pragma unroll 128
                 for(int k=cellHead[zz]; k<=cellTail[zz]; k++) {
                     // loop over particles in the cell zz
                     dx = (x-ptls[k].x) ;
@@ -331,7 +342,7 @@ __global__ void force(
         //obj2.Fy += ptls[tid].Fy_A;
         //ptls[tid].Fy_C = dx*ptls[tid].Fy_A-dy*ptls[tid].Fx_A;
         torque[tid-N_active]=dx*Fy-dy*Fx;
-        //printf("dx:%f\tdy:%f\tFy:%f\tFx:%f\n",dx,dy,Fy,Fx);
+        //printf("tid : %d \tdx:%f\tdy:%f\tFy:%f\tFx:%f\n",tid,dx,dy,Fy,Fx);
     }
     
 }
@@ -397,12 +408,13 @@ const int N_passive, const int N_body, const float mu_R_A,const float mu_R_C)
         {
             temptorque += torque[tid*N_body+i];
         }
+        //printf("tid : %d \t torque : %f\n",tid,temptorque);
         temptorque *= mu_R_A;
         tempAngle += temptorque;
         if(tempAngle>two_ppi)tempAngle -=two_ppi;
         if(tempAngle<0)tempAngle += two_ppi;
         paAngle[tid]=tempAngle;
-        torque[tid] = temptorque;
+        patorque[tid] = temptorque;
     }
     else if (tid<N_passive*N_passive){
         float temptorque=0;
@@ -411,13 +423,14 @@ const int N_passive, const int N_body, const float mu_R_A,const float mu_R_C)
         {
             temptorque += torque[tid*N_body+i];
         }
+        //printf("tid : %d \t torque : %f\n",tid,temptorque);
         //printf("torque: %f\n",temptorque);
         temptorque *= mu_R_C;
         tempAngle += temptorque;
         if(tempAngle>two_ppi)tempAngle -=two_ppi;
         if(tempAngle<0)tempAngle += two_ppi;
         paAngle[tid]=tempAngle;
-        torque[tid] = temptorque;
+        patorque[tid] = temptorque;
     }
 }
 /*void get_orderParameter(struct particle *ptls, 
