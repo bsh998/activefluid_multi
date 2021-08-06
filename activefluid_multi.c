@@ -10,6 +10,7 @@
 #include <thrust/binary_search.h>
 #include <thrust/adjacent_difference.h>
 #include <cuda_runtime.h>
+#include <cmath>
 
 #define two_ppi (6.28318530717958648)
 #define ppi (3.14159265358979324)
@@ -186,7 +187,6 @@ __global__ void particles_move(
             // after tumbling, need to draw a new tumbling time.
             ptls[tid].tauR = exponential_runtime(&localstate, alpha);
             ptls[tid].angle = tempAngle;
-            //printf("tid : %d\tx : %f\ty : %f\tangle : %f\n",tid,ptls[tid].tau,ptls[tid].tauR,ptls[tid].angle);
             state[tid] =localstate;
         }
         else{
@@ -195,15 +195,13 @@ __global__ void particles_move(
         }
         tempx += mu_active*(ptls[tid].Fx)*dt;
         tempy += mu_active*(ptls[tid].Fy)*dt;
-        if(tempx>(float)lsize/2.) tempx -= (float)lsize;
+        if(tempx>(float)lsize/2.)  tempx -= (float)lsize;
         if(tempx<-(float)lsize/2.) tempx += (float)lsize;
-        if(tempy>(float)lsize/2.) tempy -= (float)lsize;
+        if(tempy>(float)lsize/2.)  tempy -= (float)lsize;
         if(tempy<-(float)lsize/2.) tempy += (float)lsize;
         ptls[tid].x = tempx;
         ptls[tid].y = tempy;
         
-        //if(tid == 3)printf("4th particle x : %f\t y:%f \tFx:%f\tFy:%f\n",tempx,tempy,
-        //ptls[tid].Fx,ptls[tid].Fy);
     }
     else if(tid<N_active+(int)(N_passive*N_passive*N_body/2))
     {
@@ -215,13 +213,12 @@ __global__ void particles_move(
         float dx = tempx-ptls[centernum].x;
         tempx  += -dy*dtheta;
         tempy  += dx*dtheta;
-        if(tempx>(float)lsize/2.) tempx -= (float)lsize;
+        if(tempx>(float)lsize/2.)  tempx -= (float)lsize;
         if(tempx<-(float)lsize/2.) tempx += (float)lsize;
-        if(tempy>(float)lsize/2.) tempy -= (float)lsize;
+        if(tempy>(float)lsize/2.)  tempy -= (float)lsize;
         if(tempy<-(float)lsize/2.) tempy += (float)lsize;
         ptls[tid].x = tempx;
         ptls[tid].y = tempy;
-        //printf("tid : %d\tx : %f\ty : %f\t\n",tid-N_active,ptls[tid].x,ptls[tid].y);
     }
     else if(tid<N_ptcl)
     {
@@ -232,13 +229,12 @@ __global__ void particles_move(
         float dx = tempx-pax[objnum];
         tempx  += -dy*dtheta;
         tempy  += dx*dtheta;
-        if(tempx>(float)lsize/2.) tempx -= (float)lsize;
+        if(tempx>(float)lsize/2.)  tempx -= (float)lsize;
         if(tempx<-(float)lsize/2.) tempx += (float)lsize;
-        if(tempy>(float)lsize/2.) tempy -= (float)lsize;
+        if(tempy>(float)lsize/2.)  tempy -= (float)lsize;
         if(tempy<-(float)lsize/2.) tempy += (float)lsize;
         ptls[tid].x = tempx;
         ptls[tid].y = tempy;
-        //printf("tid : %d\tx : %f\ty : %f\t\n",tid-N_active,ptls[tid].x,ptls[tid].y);
     }
 // need to tumble 
 }
@@ -262,14 +258,15 @@ __global__ void force(
     float dx,dy,dl;
     if(tid < N_active) 
     {
+        float x = ptls[tid].x, y = ptls[tid].y;
         for(int i = N_active; i<N_ptcl; i++)
         {
-            dx = ptls[tid].x-ptls[i].x;
-            dy = ptls[tid].y-ptls[i].y;
-            if      (dx > (float)lsize/2)  {dx -= lsize;}
-            else if (dx < -(float)lsize/2) {dx += lsize;}
-            if      (dy > (float)lsize/2)  {dy -= lsize;}
-            else if (dy < -(float)lsize/2) {dy += lsize;}
+            dx = x-ptls[i].x;
+            dy = y-ptls[i].y;
+            if      (dx > (float)lsize-1.0)  {dx =lsize-dx;}
+            else if (dx < 1.0-(float)lsize)  {dx =-lsize-dx;}
+            if      (dy > (float)lsize-1.0)  {dy =lsize-dy;}
+            else if (dy < 1.0-(float)lsize)  {dy =-lsize-dy;}
             dl = dx*dx+dy+dy;
             if(dl<=1.0)
             {
@@ -285,18 +282,21 @@ __global__ void force(
         int objnum = (int)((tid-N_active)/N_body);
         int centernum = N_active+objnum*N_body+(int)((N_body-1)/2);
         float x = ptls[tid].x, y = ptls[tid].y;
-        for(int a=(int)x-1; a<=(int)x+1; a++) {
-            for(int b=(int)y-1; b<=(int)y+1; b++) {
+        int cellx = (int)floor(x);
+        int celly = (int)floor(y);
+        int offset = (int)(lsize/2);
+        for(int a=cellx-1; a<=cellx+1; a++) {
+            for(int b=celly-1; b<=celly+1; b++) {
                 // zz : index for neighboring cells
-                int zz = (a+(int)(lsize/2.0))%lsize + ((b+(int)(lsize/2.0))%lsize)*lsize ;
+                int zz = (a+offset)%lsize + ((b+offset)%lsize)*lsize ;
                 for(int k=cellHead[zz]; k<=cellTail[zz]; k++) {
                     // loop over particles in the cell zz
                     dx = (x-ptls[k].x) ;
-                    if(dx>lsize/2.) dx = dx-lsize ;
-                    else if(dx<-lsize/2.) dx = dx+lsize;
+                    if      (dx > (float)lsize-1.0)  {dx =lsize-dx;}
+                    else if (dx < 1.0-(float)lsize)  {dx =-lsize-dx;}
                     dy = (y-ptls[k].y) ;
-                    if(dy>lsize/2.) dy = dy-lsize ;
-                    else if(dy<-lsize/2.) dy = dy+lsize;
+                    if      (dy > (float)lsize-1.0)  {dy =lsize-dy;}
+                    else if (dy < 1.0-(float)lsize)  {dy =-lsize-dy;}
                     if(dx*dx+dy*dy <= 1.0) {
                         Fx += lamb*dx;
                         Fy += lamb*dy;
@@ -307,28 +307,27 @@ __global__ void force(
         
         dx = x-ptls[centernum].x;
         dy = y-ptls[centernum].y;
-        //obj1.Fx += ptls[tid].Fx_A;
-        //obj1.Fy += ptls[tid].Fy_A;
-        //ptls[tid].Fy_C = dx*ptls[tid].Fy_A-dy*ptls[tid].Fx_A;
         torque[tid-N_active]=dx*Fy-dy*Fx;
-        //printf("tid : %d \tdx:%f\tdy:%f\tFy:%f\tFx:%f\n",tid,dx,dy,Fy,Fx);
     }
     else if(tid<N_ptcl)
     {
         int objnum = (int)((tid-N_active)/N_body);
         float x = ptls[tid].x, y = ptls[tid].y;
-        for(int a=(int)x-1; a<=(int)x+1; a++) {
-            for(int b=(int)y-1; b<=(int)y+1; b++) {
+        int cellx = (int)floor(x);
+        int celly = (int)floor(y);
+        int offset = (int)(lsize/2);
+        for(int a=cellx-1; a<=cellx+1; a++) {
+            for(int b=celly-1; b<=celly+1; b++) {
                 // zz : index for neighboring cells
-                int zz = (a+(int)(lsize/2.0))%lsize + ((b+(int)(lsize/2.0))%lsize)*lsize ;
+                int zz = (a+offset)%lsize + ((b+offset)%lsize)*lsize ;
                 for(int k=cellHead[zz]; k<=cellTail[zz]; k++) {
                     // loop over particles in the cell zz
                     dx = (x-ptls[k].x) ;
-                    if(dx>lsize/2.) dx = dx-lsize ;
-                    else if(dx<-lsize/2.) dx = dx+lsize;
+                    if      (dx > (float)lsize-1.0)  {dx =lsize-dx;}
+                    if      (dx < 1.0-(float)lsize)  {dx =-lsize-dx;}
                     dy = (y-ptls[k].y) ;
-                    if(dy>lsize/2.) dy = dy-lsize ;
-                    else if(dy<-lsize/2.) dy = dy+lsize;
+                    if      (dy > (float)lsize-1.0)  {dy =lsize-dy;}
+                    if      (dy < 1.0-(float)lsize)  {dy =-lsize-dy;}
                     if(dx*dx+dy*dy <= 1.0) {
                         Fx += lamb*dx;
                         Fy += lamb*dy;
@@ -338,11 +337,7 @@ __global__ void force(
         }
         dx = x-pax[objnum];
         dy = y-pay[objnum];
-        //obj2.Fx += ptls[tid].Fx_A;
-        //obj2.Fy += ptls[tid].Fy_A;
-        //ptls[tid].Fy_C = dx*ptls[tid].Fy_A-dy*ptls[tid].Fx_A;
         torque[tid-N_active]=dx*Fy-dy*Fx;
-        //printf("tid : %d \tdx:%f\tdy:%f\tFy:%f\tFx:%f\n",tid,dx,dy,Fy,Fx);
     }
     
 }
@@ -376,15 +371,23 @@ __global__ void cell_head_tail(int ptlsNum, int *cell,
         }
     }
 }
-
+__global__ void head_tail_test(int *cellHead, int *cellTail, const int cllsNum)
+{
+    const int tid = threadIdx.x + blockDim.x * blockIdx.x ;
+    if(tid<cllsNum)
+    {
+        if(cellHead[tid]==0)
+        {
+            printf("tid : %d\n",tid);
+        }
+    }
+}
 
 void linked_list(struct particle *ptls, const int lsize, 
         const int N_ptcl,const int N_active, const int cllsNum, int *cell,  
-        int *head, int *tail, int nBlocks, int nThreads)
+        int *head, int *tail, unsigned int nBlocks, unsigned int nThreads)
 {
-    // cell[ptl] = cell index of a particle
     find_address<<<nBlocks, nThreads>>>(ptls, lsize, N_ptcl, cell);
-    // sort particles w.r.t the cell index
     thrust::sort_by_key(thrust::device_ptr<int>(cell),
                 thrust::device_ptr<int>(cell)+N_active,
                 thrust::device_ptr<struct particle>(ptls));
@@ -392,9 +395,8 @@ void linked_list(struct particle *ptls, const int lsize,
             thrust::device_ptr<int>(head)+cllsNum, 0);
     thrust::fill(thrust::device_ptr<int>(tail),
             thrust::device_ptr<int>(tail)+cllsNum, -1);
-    // find the first (head) and the last (tail)  particle indices in each cell
-    // head = -1 and tail = 0 for the empty cell
     cell_head_tail<<<nBlocks, nThreads>>>(N_active, cell, head, tail);
+
 }
 __global__ void torque_object(float *torque, float *patorque,float *paAngle, 
 const int N_passive, const int N_body, const float mu_R_A,const float mu_R_C)
@@ -402,35 +404,35 @@ const int N_passive, const int N_body, const float mu_R_A,const float mu_R_C)
     const int tid = threadIdx.x + blockDim.x * blockIdx.x ;
     if(tid<(int)(N_passive*N_passive/2))
     {
-        float temptorque=0;
+        float tempTorque=0;
         float tempAngle=paAngle[tid];
         for(int i = 0; i<N_body;i++)
         {
-            temptorque += torque[tid*N_body+i];
+            tempTorque += torque[tid*N_body+i];
         }
-        //printf("tid : %d \t torque : %f\n",tid,temptorque);
-        temptorque *= mu_R_A;
-        tempAngle += temptorque;
+        //printf("tid : %d \t torque : %f\n",tid,tempTorque);
+        tempTorque *= mu_R_A;
+        tempAngle += tempTorque;
         if(tempAngle>two_ppi)tempAngle -=two_ppi;
-        if(tempAngle<0)tempAngle += two_ppi;
-        paAngle[tid]=tempAngle;
-        patorque[tid] = temptorque;
+        if(tempAngle<0)tempAngle       += two_ppi;
+        paAngle[tid]  = tempAngle;
+        patorque[tid] = tempTorque;
     }
     else if (tid<N_passive*N_passive){
-        float temptorque=0;
+        float tempTorque=0;
         float tempAngle=paAngle[tid];
         for(int i = 0; i<N_body;i++)
         {
-            temptorque += torque[tid*N_body+i];
+            tempTorque += torque[tid*N_body+i];
         }
-        //printf("tid : %d \t torque : %f\n",tid,temptorque);
+        //printf("tid : %d \t torque : %f\n",tid,tempTorque);
         //printf("torque: %f\n",temptorque);
-        temptorque *= mu_R_C;
-        tempAngle += temptorque;
+        tempTorque *= mu_R_C;
+        tempAngle += tempTorque;
         if(tempAngle>two_ppi)tempAngle -=two_ppi;
         if(tempAngle<0)tempAngle += two_ppi;
-        paAngle[tid]=tempAngle;
-        patorque[tid] = temptorque;
+        paAngle[tid]  = tempAngle;
+        patorque[tid] = tempTorque;
     }
 }
 /*void get_orderParameter(struct particle *ptls, 
