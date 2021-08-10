@@ -273,7 +273,7 @@ __global__ void force(
             if      (dy > (float)offset)  {dy -= lsize;}
             else if (dy < -(float)offset) {dy += lsize;}
             dl = dx*dx+dy*dy;
-            if(dl<=1.0)
+            if(dl<=1.0 && dl!=0)
             {
                 dl = rsqrtf(dl);
                 force = lamb*(1-dl);
@@ -307,7 +307,7 @@ __global__ void force(
                     if     (dy>(float)offset)  dy -= lsize;
                     else if(dy<-(float)offset) dy += lsize;
                     dl = dx*dx+dy*dy;
-                    if(dl <= 1.0) {
+                    if(dl <= 1.0 && dl!=0) {
                         dl = rsqrtf(dl);
                         force = lamb*(1-dl);
                         Fx += force*fdividef(dx,dl);
@@ -342,7 +342,7 @@ __global__ void force(
                     if     (dy>(float)offset)  dy -= lsize;
                     else if(dy<-(float)offset) dy += lsize;
                     dl = dx*dx+dy*dy;
-                    if(dl <= 1.0) {
+                    if(dl <= 1.0 && dl!=0) {
                         dl = rsqrtf(dl);
                         force = lamb*(1-dl);
                         Fx += force*fdividef(dx,dl);

@@ -42,9 +42,10 @@ int main(int argc, char *argv[])
     const int nThreads = (MaxThreads<N_ptcl)? MaxThreads : N_ptcl;
     const int nBlocks  = (N_ptcl+nThreads-1)/nThreads;
     std::cout<<N_ptcl<<'\n';
-    float *paAngle, *paTorque, *pax, *pay;
+    float *paAngle, *paAngleOld, *paTorque, *pax, *pay;
     float *AngleHost;
     cudaMalloc(&paAngle, sizeof(float)*(N_passive*N_passive));
+    cudaMalloc(&paAngleOld, sizeof(float)*(N_passive*N_passive));
     cudaMalloc(&paTorque, sizeof(float)*(N_passive*N_passive));
     cudaMalloc(&pax, sizeof(float)*(N_passive*N_passive));
     cudaMalloc(&pay, sizeof(float)*(N_passive*N_passive));
@@ -95,7 +96,7 @@ int main(int argc, char *argv[])
             linked_list(devPtls, Lsize, N_ptcl,N_active, cllsNum, devCell, devHead, devTail,nBlocks, nThreads);
             force<<<nBlocks,nThreads>>>(devPtls,devHead,devTail,devtorque,pax,pay,Lsize,lamb,N_ptcl,N_passive,N_active,N_body);
             torque_object<<<nBlocks,nThreads>>>(devtorque, paTorque, paAngle,N_passive,N_body,mu_R_A,mu_R_C,dt);
-            particles_move<<<nBlocks, nThreads>>>(devPtls,devStates,paTorque,pax,pay,Lsize,U0,dt,alpha,
+            particles_move<<<nBlocks, nThreads>>>(devPtls,devStates,paAngle,pax,pay,Lsize,U0,dt,alpha,
                 N_ptcl,N_passive,N_active,N_body,mu_active,mu_R_A,mu_R_C);
             
             if((t%recordn)==0)
