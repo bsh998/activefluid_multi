@@ -44,12 +44,15 @@ int main(int argc, char *argv[])
     std::cout<<N_ptcl<<'\n';
     float *paAngle, *paAngleOld, *paTorque, *pax, *pay;
     float *AngleHost;
+    int *HostHead, *HostTail;
     cudaMalloc(&paAngle, sizeof(float)*(N_passive*N_passive));
     cudaMalloc(&paAngleOld, sizeof(float)*(N_passive*N_passive));
     cudaMalloc(&paTorque, sizeof(float)*(N_passive*N_passive));
     cudaMalloc(&pax, sizeof(float)*(N_passive*N_passive));
     cudaMalloc(&pay, sizeof(float)*(N_passive*N_passive));
     AngleHost = (float *)malloc(sizeof(float)*(N_passive*N_passive));
+    HostHead = (int  *)malloc(sizeof(int)*(cllsNum));
+    HostTail = (int  *)malloc(sizeof(int)*(cllsNum));
     // VicsekParticle in the device
     struct particle *devPtls;
     cudaMalloc(&devPtls, sizeof(struct particle)*N_ptcl) ;
@@ -57,11 +60,11 @@ int main(int argc, char *argv[])
     // linked list is managed with the THRUST library
     // corresponding device memory
     int *devCell, *devHead, *devTail ;
-    float *devtorque;
+    float *devTorque;
     cudaMalloc(&devCell, sizeof(int)*N_ptcl);
     cudaMalloc(&devHead, sizeof(int)*cllsNum);
     cudaMalloc(&devTail, sizeof(int)*cllsNum);
-    cudaMalloc(&devtorque, sizeof(float)*(N_passive*N_passive*N_body));
+    cudaMalloc(&devTorque, sizeof(float)*(N_passive*N_passive*N_body));
     
 
 /* // temporary angle variable
@@ -82,11 +85,18 @@ int main(int argc, char *argv[])
         init_random_config<<<nBlocks,nThreads>>>(devPtls, devStates, paAngle, pax, pay, Lsize, N_ptcl,N_passive, N_active,N_body,alpha,dtheta) ;
         //init_passive_particle<<<nBlocks,nThreads>>>(devPtls, paAngle, pax, pay, Lsize, N_passive, N_active,N_body,dist) ;
         start = time(NULL);
-        std::ofstream out;
-        std::stringstream fileNameStream;
+        std::ofstream out,out2;
+        std::stringstream fileNameStream,fileNameStream2;
         fileNameStream <<"mu_R_A_"<< argv[8]<<"_mu_R_C_"<<argv[9]<<"_Passive_"<<N_passive<<".csv";
+        fileNameStream2 <<"mu_R_A_"<< argv[8]<<"_mu_R_C_"<<argv[9]<<"_Passive_"<<N_passive<<"_particle.csv";
         out.open(fileNameStream.str());
         std::cout<<fileNameStream.str();
+        out2.open(fileNameStream2.str());
+        for(int i= 0; i<cllsNum;i++)
+        {
+            out2 << i<<'('<<(i%Lsize)-Lsize/2.<<'\\'<<(i/Lsize)-(Lsize/2.)<<')'<<',';
+        }
+        out2<<'\n';
             //fileNameStream.str());
         int iter = (int)tmax/dt;
         int recordn = (int)record/dt;
@@ -94,20 +104,28 @@ int main(int argc, char *argv[])
             // position and angle update
              // linked list
             linked_list(devPtls, Lsize, N_ptcl,N_active, cllsNum, devCell, devHead, devTail,nBlocks, nThreads);
-            force<<<nBlocks,nThreads>>>(devPtls,devHead,devTail,devtorque,pax,pay,Lsize,lamb,N_ptcl,N_passive,N_active,N_body);
-            torque_object<<<nBlocks,nThreads>>>(devtorque, paTorque, paAngle,N_passive,N_body,mu_R_A,mu_R_C,dt);
-            particles_move<<<nBlocks, nThreads>>>(devPtls,devStates,paAngle,pax,pay,Lsize,U0,dt,alpha,
+            //head_tail_test<<<nBlocks,nThreads>>>(devHead, devTail, cllsNum);
+            force<<<nBlocks,nThreads>>>(devPtls,devHead,devTail,devTorque,pax,pay,Lsize,lamb,N_ptcl,N_passive,N_active,N_body);
+            torque_object<<<nBlocks,nThreads>>>(devTorque, paTorque, paAngle,N_passive,N_body,mu_R_A,mu_R_C,dt);
+            particles_move<<<nBlocks, nThreads>>>(devPtls,devStates,paTorque,pax,pay,Lsize,U0,dt,alpha,
                 N_ptcl,N_passive,N_active,N_body,mu_active,mu_R_A,mu_R_C);
             
             if((t%recordn)==0)
             {
                 cudaMemcpy(AngleHost,paAngle,sizeof(float)*N_passive*N_passive,cudaMemcpyDeviceToHost);
+                cudaMemcpy(HostHead,devHead,sizeof(int)*cllsNum,cudaMemcpyDeviceToHost);
+                cudaMemcpy(HostTail,devTail,sizeof(int)*cllsNum,cudaMemcpyDeviceToHost);
                 for(int i = 0; i<(int)N_passive*N_passive/2;i++)
                 {
                     out<<AngleHost[i]<<',';
                     out<<AngleHost[i+(int)N_passive*N_passive/2]<<',';
                 }
+                for(int i= 0; i<cllsNum;i++)
+                {
+                    out2 << HostTail[i]-HostHead[i]<<',';
+                }
                 out<<'\n';
+                out2<<'\n';
                 std::cout<<(t/recordn)<<'\n';
                 end= time(NULL);
                 std::cout<<(end-start)<<'\n';
